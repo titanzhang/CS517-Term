@@ -1,8 +1,14 @@
 package edu.cpp.cs517.term;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 
 import edu.stanford.nlp.ling.CoreAnnotations.PartOfSpeechAnnotation;
 import edu.stanford.nlp.ling.CoreAnnotations.SentencesAnnotation;
@@ -50,7 +56,7 @@ public class ReviewAnalyzer {
 		this.getPipeline().annotate(this.document);
 
 		this.sentiments = new ArrayList<SentimentBiTuple>();
-		ServiceCategory serviceCategory = new ServiceCategory();
+		ServiceCategory serviceCategory = ServiceCategory.getInstance();
 		List<String> currentCategories = new ArrayList<String>();
 		int currentScore = 0;
 		int rangeCount = 1;
@@ -143,6 +149,27 @@ public class ReviewAnalyzer {
 		return resultList;
 	}
 
+	public List<String> extractNounPhrase(CoreMap sentence) {
+		List<String> resultList = new ArrayList<String>();
+		String nounPhrase = "";
+		boolean isLastNoun = false;
+
+		for (CoreLabel word : this.getWords(sentence)) {
+			String pos = this.getWordPOS(word);
+			if (pos.equals("NN") || pos.equals("NNS") || pos.equals("NNP") || pos.equals("NNPS")) {
+				nounPhrase += " " + this.getWordText(word);
+				isLastNoun = true;
+			} else {
+				if (isLastNoun) {
+					resultList.add(nounPhrase.trim());
+					nounPhrase = "";
+					isLastNoun = false;
+				}
+			}
+		}
+		return resultList;
+	}
+
 	public int normalizeScore(int score) {
 		if (score < 2) {
 			return -1;
@@ -174,6 +201,170 @@ public class ReviewAnalyzer {
 			return "";
 		}
 
+	}
+
+	public void writeTrainingFile(String fileName, List<Mention> mentions) throws IOException {
+		ServiceCategory serviceCategory = ServiceCategory.getInstance();
+		Dictionary dictionary = Dictionary.getInstance();
+		int matchIndexStart = dictionary.getSize();
+
+		// Open file
+		File file = new File(fileName);
+		if (!file.exists()) {
+			file.createNewFile();
+		}
+		BufferedWriter writer = new BufferedWriter(new FileWriter(file.getAbsoluteFile(), false));
+
+		for (Mention mention : mentions) {
+			String annotatedCategory = serviceCategory.get(mention.categoryID);
+
+			Map<Integer, Integer> wordFeatures = new TreeMap<Integer, Integer>();
+			// Features from every word of noun phrase
+			for (String word : mention.text.split(" ")) {
+				// Lookup dictionary to get the index
+				int wordIndex = dictionary.getIndex(word.toLowerCase());
+				if (wordIndex < 0) {
+					continue; // not in dictionary
+				}
+				wordFeatures.put(wordIndex, 1);
+			}
+
+			// no category related to this mention
+			if (annotatedCategory == null) { 
+				writer.write("-1");
+				for (Integer feature : wordFeatures.keySet()) {
+					writer.write(" " + feature + ":" + wordFeatures.get(feature));
+				}
+				writer.write("\n");
+				continue;
+			}
+
+			// Find possible categories
+			List<String> possibleCategories = serviceCategory.partialMatch(mention.text);
+			if (possibleCategories.isEmpty()) { // same meaning, different
+												// words, ex: tranny and
+												// transmission
+				// Do not support this case for now
+				// TODO: add edit distance to support this
+				continue;
+			}
+
+			for (String possibleCategory : serviceCategory.partialMatch(mention.text)) {
+				// SVM file format: <1/-1> <feature>:<value> ....
+				Map<Integer, Integer> features = new TreeMap<Integer, Integer>();
+
+				// Target value for SVM
+				boolean isMatched = annotatedCategory.equalsIgnoreCase(possibleCategory);
+
+				// Features from match results
+				// TODO: add feature for edit distance
+				if (serviceCategory.isExactMatch(mention.text, possibleCategory)) {
+					features.put(matchIndexStart + 1, 1);
+				}
+				if (serviceCategory.isPartialMatch(mention.text, possibleCategory)) {
+					features.put(matchIndexStart + 2, 1);
+				}
+
+				// write target and features to trainning file
+				writer.write(isMatched ? "1" : "-1");
+				for (Integer feature : wordFeatures.keySet()) {
+					writer.write(" " + feature + ":" + wordFeatures.get(feature));
+				}
+				for (Integer feature : features.keySet()) {
+					writer.write(" " + feature + ":" + features.get(feature));
+				}
+			}
+
+		}
+
+		writer.close();
+	}
+
+	public void writeTestFile(String fileName, List<Mention> mentions) throws IOException {
+		ServiceCategory serviceCategory = ServiceCategory.getInstance();
+		Dictionary dictionary = Dictionary.getInstance();
+		int matchIndexStart = dictionary.getSize();
+
+		// Open file
+		File file = new File(fileName);
+		if (!file.exists()) {
+			file.createNewFile();
+		}
+		BufferedWriter writer = new BufferedWriter(new FileWriter(file.getAbsoluteFile(), false));
+
+		for (Mention mention : mentions) {
+			Map<Integer, Integer> wordFeatures = new TreeMap<Integer, Integer>();
+			// Features from every word of noun phrase
+			for (String word : mention.text.split(" ")) {
+				// Lookup dictionary to get the index
+				int wordIndex = dictionary.getIndex(word.toLowerCase());
+				if (wordIndex < 0) {
+					continue; // not in dictionary
+				}
+				wordFeatures.put(wordIndex, 1);
+			}
+
+			// Find possible categories
+			List<String> possibleCategories = serviceCategory.partialMatch(mention.text);
+			if (possibleCategories.isEmpty()) { // same meaning, different
+												// words, ex: tranny and
+												// transmission
+				// Do not support this case for now
+				// TODO: add edit distance to support this
+				continue;
+			}
+
+			for (String possibleCategory : serviceCategory.partialMatch(mention.text)) {
+				// SVM file format: <1/-1> <feature>:<value> ....
+				Map<Integer, Integer> features = new TreeMap<Integer, Integer>();
+
+				// Features from match results
+				// TODO: add feature for edit distance
+				if (serviceCategory.isExactMatch(mention.text, possibleCategory)) {
+					features.put(matchIndexStart + 1, 1);
+				}
+				if (serviceCategory.isPartialMatch(mention.text, possibleCategory)) {
+					features.put(matchIndexStart + 2, 1);
+				}
+
+				// write target and features to test file
+				writer.write("0");
+				for (Integer feature : wordFeatures.keySet()) {
+					writer.write(" " + feature + ":" + wordFeatures.get(feature));
+				}
+				for (Integer feature : features.keySet()) {
+					writer.write(" " + feature + ":" + features.get(feature));
+				}
+			}
+
+		}
+
+		writer.close();
+	}
+
+	public List<Integer> readPredictFile(String fileName, List<Mention> mentions) throws IOException {
+		// TODO:implement
+		List<Integer> predictCategories = new ArrayList<Integer>();
+		return predictCategories;
+	}
+	public int execute(String command) {
+		try {
+			Runtime rt = Runtime.getRuntime();
+			Process proc = rt.exec(command);
+
+			// Separate thread to print out error and output.
+//			StreamGobbler errorGobbler = new StreamGobbler(proc.getErrorStream(), null);
+//			StreamGobbler outputGobbler = new StreamGobbler(proc.getInputStream(), null);
+//			errorGobbler.start();
+//			outputGobbler.start();
+
+			// Wait for thread to finish and print out exit value.
+			int exitVal = proc.waitFor();
+			return exitVal;
+		} catch (Throwable t) {
+			t.printStackTrace();
+		}
+		return -1;
 	}
 
 }

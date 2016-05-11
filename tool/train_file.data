@@ -1,0 +1,5 @@
++1 1:1 2:1 20:1 21:1 22:13# transmisstion fluid <partial match cat1> <exact match cat1> <overlap>
+-1 1:1 2:1 # transmisstion fluid <partial match cat2> <exact match cat2>
+-1 7:1 # v7
+-1 8:1 # v8
+-1 9:1 10:1 # v9 v10

@@ -1,0 +1,10 @@
+Ieh3kfZ-5J9pLju4JiQDvQ	place	1	1	
+Ieh3kfZ-5J9pLju4JiQDvQ	mechanics	2	-1	
+Ieh3kfZ-5J9pLju4JiQDvQ	issues	-1	0
+PU28OoBSHpZLkYGCmNxlmg	believer	-1	0
+PU28OoBSHpZLkYGCmNxlmg	impressions	1	1
+PU28OoBSHpZLkYGCmNxlmg	business	-1	0
+PU28OoBSHpZLkYGCmNxlmg	attention	-1	0
+PU28OoBSHpZLkYGCmNxlmg	business	2	1
+PU28OoBSHpZLkYGCmNxlmg	Joe	-1	0
+PU28OoBSHpZLkYGCmNxlmg	shop assistant	-1	0
